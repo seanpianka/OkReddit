@@ -12,6 +12,8 @@ okreddit
 import configparser
 import lxml
 import praw
+import random
+import re
 import requests
 import sys
 import threading
@@ -26,7 +28,6 @@ SLEEP_TIME = {
     "delete": 1000,
 }
 
-GREEN_LIGHT = True  # used to prevent duplicate commenting
 SUBREDDITS = ["codegress"]#, "all"]
 POINT_THRESHOLD = 0
 USER_AGENT = "OkReddit by /u/cdrootrmdashrfstar"
@@ -38,10 +39,22 @@ config.read(CONF_FILENAME)
 USERNAME = config.get('Authentication', 'username')
 PASSWORD = config.get('Authentication', 'password')
 
-PREDEFINED_POST = "Found \"{}\", so here's your definition:\n{}\nThanks for using [OkReddit](https://github.com/seanpianka/OkReddit)!\n\n[Contact the Creator](http://reddit.com/u/cdrootrmdashrfstar)."
+PREDEFINED_COMMENT = "Found \"{}\", so here's your definition(s):\n\n{}\n\nThanks for using [OkReddit](https://github.com/seanpianka/OkReddit)!\n\n[Contact the Creator](http://reddit.com/u/cdrootrmdashrfstar)."
+
+BASE_PATTERN = r"\b{}.(\w+)"
+PHRASES_TO_LOOK_FOR = [
+    "ok google define", "ok reddit define", "ok define",
+    "okg define", "okr define",
+]
+PHRASE_PATTERNS = {}
+
+for phrase in PHRASES_TO_LOOK_FOR:
+    PHRASE_PATTERNS[phrase] = re.compile(BASE_PATTERN.format(phrase))
+
+MAX_DEFINITIONS = 5
 
 
-def run():
+def run(phrases):
     r = praw.Reddit(USER_AGENT)
     r.login(USERNAME, PASSWORD)
     print("Logged in as {}.".format(USERNAME))
@@ -50,14 +63,10 @@ def run():
     t = threading.Thread(target=delete_downvoted_posts, args=(r, ))
     t.start()
 
-    phrases_to_look_for = (
-        "ok google define", "ok reddit define", "ok define",
-        "okg define", "okr define",
-    )
 
     while True:
         print("Initializing scanner...")
-        scan_comments(r, phrases_to_look_for)
+        scan_comments(r, phrases)
         print("Waiting {} seconds...".format(SLEEP_TIME['scan']))
         time.sleep(SLEEP_TIME['scan'])
 
@@ -80,8 +89,12 @@ def scan_comments(session, phrases):
 
     for subreddit in SUBREDDITS:
         for comment in comments[subreddit]:
-            for phrase in phrases:
+            GREEN_LIGHT = True  # used to prevent duplicate commenting
+            for phrase, pattern in phrases.items():
                 print("Searching for phrases in comment...")
+                print(comment.body)
+                print()
+
                 if phrase in comment.body:
                     for reply in comment.replies:
                         if reply.author.name == USERNAME:
@@ -91,25 +104,28 @@ def scan_comments(session, phrases):
 
                     if GREEN_LIGHT:
                         print("Found new comment, replying...")
-                        definition = define_word(word)
-                        post_definition_reply(reply_to, phrase, definition)
-                        reply_count += 1
-                        break
+                        try:
+                            word = pattern.findall(comment.body)[0]
+                        except:
+                            print(pattern)
+                            print("Unable to match pattern. Skipping.")
+                        else:
+                            definition = define_word(word)
+                            post_definition_reply(comment, word, definition)
+                            reply_count += 1
+                            break
 
             if reply_count == 1000:
                 return
 
 
-def post_definition_reply(reply_to, phrase, definition):
-    # post
+def post_definition_reply(reply_to, word, definition):
     try:
+        global PREDEFINED_COMMENT
         print("Posting reply...")
-        reply_to.reply(PREDEFINED_COMMENT.format(phrase, definition))
+        reply_to.reply(PREDEFINED_COMMENT.format(word, definition))
     except Exception as e:
-        try:
-            print("Received error {}: {}".format(e.code, e))
-        except Exception as e2:
-            print("Unexpected exception: {}".format(e2))
+        print("Received error {}: {}".format(e))
 
 
 def delete_downvoted_posts(session):
@@ -137,11 +153,37 @@ def define_word(word):
         # Do not run until a new API is provided.
         sys.exit()
 
-    tree = html.fromstring(res.text)
+    src = requests.get(DEFINE_API.format("love")).text
+    tree = html.fromstring(src)
+
+    data = {}
+    # credit to @mmcdan for this wonderful xpath to find <b> OR <li> with class="std"
+    # makes perfect use of xpath's `|` (union) operator
+    for element in tree.xpath('//div[@id="forEmbed"]/b|//*[@class="std"]/ol/div/li'):
+        if element.tag == 'b':
+            last_category = element.text.strip()
+            if last_category not in data:
+                data[last_category] = []
+        elif element.tag == 'li':
+            if last_category:
+                data[last_category].append(element.text.strip())
+            else:
+                print('WARNING: li was found before b... this should not happen')
 
     definition = ''
+
+    for form, defns in data.items():
+        word_meaning = "As a **{}**, {} can mean:\n\n".format(form, word)
+        definition += word_meaning
+        random.shuffle(defns)
+        for i, defn in enumerate(defns):
+            if i == MAX_DEFINITIONS:
+                break
+            definition += "\n{}: {}\n".format(i + 1, defn)
+        definition += "\n"
+
     return definition
 
 
 if __name__ == '__main__':
-    run()
+    run(PHRASE_PATTERNS)
