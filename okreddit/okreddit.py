@@ -28,10 +28,14 @@ SLEEP_TIME = {
     "delete": 1000,
 }
 
-SUBREDDITS = ["codegress"]#, "all"]
+SUBREDDITS_CONF = 'subreddits.conf'
+OKREDDIT_CONF = 'okreddit.conf'
+SUBREDDITS = []
+with open(SUBREDDITS_CONF, 'r') as f:
+    for subreddit in f.read.splitlines():
+        SUBREDDITS.append(str(subreddit))
 POINT_THRESHOLD = 0
 USER_AGENT = "OkReddit by /u/cdrootrmdashrfstar"
-CONF_FILENAME = 'okreddit.conf'
 
 config = configparser.ConfigParser()
 config.read(CONF_FILENAME)
@@ -39,7 +43,11 @@ config.read(CONF_FILENAME)
 USERNAME = config.get('Authentication', 'username')
 PASSWORD = config.get('Authentication', 'password')
 
-PREDEFINED_COMMENT = "Found \"{}\", so here's your definition(s):\n\n{}\n\nThanks for using [OkReddit](https://github.com/seanpianka/OkReddit)!\n\n[Contact the Creator](http://reddit.com/u/cdrootrmdashrfstar)."
+PREDEFINED_COMMENT = "Found \"{}\", so here's your definition(s):\n\n" \
+                     "{}\n\nThanks for using [OkReddit]" \
+                     "(https://github.com/seanpianka/OkReddit)!\n\n" \
+                     "[Contact the Creator]" \
+                     "(http://reddit.com/u/cdrootrmdashrfstar)."
 
 BASE_PATTERN = r"\b{}.(\w+)"
 PHRASES_TO_LOOK_FOR = [
@@ -149,17 +157,18 @@ def delete_downvoted_posts(session):
 def define_word(word):
     res = requests.get(DEFINE_API.format(word))
     if res.status_code == 404:
-        # The definition API is now invalid.
-        # Do not run until a new API is provided.
+        print("The definition API is now invalid.",
+              "Do not run until a new API is provided.")
         sys.exit()
 
     src = requests.get(DEFINE_API.format("love")).text
     tree = html.fromstring(src)
 
     data = {}
-    # credit to @mmcdan for this wonderful xpath to find <b> OR <li> with class="std"
+    # credit to @mmcdan for this xpath to find <b> OR <li> w/ class="std"
     # makes perfect use of xpath's `|` (union) operator
-    for element in tree.xpath('//div[@id="forEmbed"]/b|//*[@class="std"]/ol/div/li'):
+    defns_xpath = '//div[@id="forEmbed"]/b|//*[@class="std"]/ol/div/li'
+    for element in tree.xpath(defns_xpath):
         if element.tag == 'b':
             last_category = element.text.strip()
             if last_category not in data:
@@ -168,7 +177,7 @@ def define_word(word):
             if last_category:
                 data[last_category].append(element.text.strip())
             else:
-                print('WARNING: li was found before b... this should not happen')
+                print('Warning: li found before b... this shouldn\'t happen.')
 
     definition = ''
 
