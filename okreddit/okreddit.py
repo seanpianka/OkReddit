@@ -32,13 +32,13 @@ SUBREDDITS_CONF = 'subreddits.conf'
 OKREDDIT_CONF = 'okreddit.conf'
 SUBREDDITS = []
 with open(SUBREDDITS_CONF, 'r') as f:
-    for subreddit in f.read.splitlines():
+    for subreddit in f.read().splitlines():
         SUBREDDITS.append(str(subreddit))
 POINT_THRESHOLD = 0
 USER_AGENT = "OkReddit by /u/cdrootrmdashrfstar"
 
 config = configparser.ConfigParser()
-config.read(CONF_FILENAME)
+config.read(OKREDDIT_CONF)
 
 USERNAME = config.get('Authentication', 'username')
 PASSWORD = config.get('Authentication', 'password')
@@ -99,29 +99,33 @@ def scan_comments(session, phrases):
         for comment in comments[subreddit]:
             GREEN_LIGHT = True  # used to prevent duplicate commenting
             for phrase, pattern in phrases.items():
-                print("Searching for phrases in comment...")
-                print(comment.body)
-                print()
+                print("Searching for phrases in {}'s comment, id: {}...".\
+                      format(comment.author, comment.id))
 
                 if phrase in comment.body:
-                    for reply in comment.replies:
-                        if reply.author.name == USERNAME:
-                            print("Ignoring comment, already replied.")
-                            GREEN_LIGHT = False
-                            break
+                    print("Fetching comment replies...")
+                    comment.refresh()
+                    if str(comment.author.name).lower() == USERNAME.lower() or\
+                    [x for x in comment.replies if x.author.name.lower() == USERNAME.lower()]:
+                        print("Ignoring comment, already replied.")
+                        GREEN_LIGHT = False
 
                     if GREEN_LIGHT:
-                        print("Found new comment, replying...")
                         try:
                             word = pattern.findall(comment.body)[0]
                         except:
-                            print(pattern)
-                            print("Unable to match pattern. Skipping.")
+                            print("Pattern: {}".format(pattern))
+                            print("Unable to match comment pattern.",
+                                  "Attmepting to match other patterns...")
                         else:
+                            print("Found new comment, id: {}, replying...".\
+                                  format(comment.id))
                             definition = define_word(word)
                             post_definition_reply(comment, word, definition)
                             reply_count += 1
+                            print("Moving to next comment...")
                             break
+
 
             if reply_count == 1000:
                 return
@@ -133,7 +137,7 @@ def post_definition_reply(reply_to, word, definition):
         print("Posting reply...")
         reply_to.reply(PREDEFINED_COMMENT.format(word, definition))
     except Exception as e:
-        print("Received error {}: {}".format(e))
+        print("Received error: {}".format(e))
 
 
 def delete_downvoted_posts(session):
