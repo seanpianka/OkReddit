@@ -165,8 +165,7 @@ def define_word(word):
               "Do not run until a new API is provided.")
         sys.exit()
 
-    src = requests.get(DEFINE_API.format("love")).text
-    tree = html.fromstring(src)
+    tree = html.fromstring(res)
 
     data = {}
     # credit to @mmcdan for this xpath to find <b> OR <li> w/ class="std"
