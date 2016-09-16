@@ -23,9 +23,9 @@ with open(SUBREDDITS_CONF, 'r') as f:
     for subreddit in list(map(str.strip, f.read().splitlines())):
         if '#' not in subreddit and subreddit:
             if subreddit[0] != "-":
-                SUBREDDITS['allowed'].append(subreddit)
+                SUBREDDITS['allowed'].append(subreddit.lower())
             else:
-                SUBREDDITS['disallowed'].append(subreddit)
+                SUBREDDITS['disallowed'].append(subreddit.lower())
 
 """
     dictionary api
@@ -41,7 +41,7 @@ PHRASES_TO_LOOK_FOR = []
 with open(PHRASES_CONF, 'r') as f:
     for phrase in list(map(str.strip, f.read().splitlines())):
         if '#' not in phrase and phrase:
-            PHRASES_TO_LOOK_FOR.append(phrase)
+            PHRASES_TO_LOOK_FOR.append(phrase.lower())
 
 PHRASE_PATTERNS = {}
 for phrase in PHRASES_TO_LOOK_FOR:

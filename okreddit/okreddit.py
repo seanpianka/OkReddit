@@ -75,7 +75,11 @@ def scan_comments(session, phrases):
         print_log("Beginning to scan {}...".format(subreddit))
 
         for comment in comment_generator:
-            comment.body = ''.join(ch for ch in comment.body\
+            if str(comment.subreddit).lower() in SUBREDDITS['disallowed']:
+                print_log("Ignoring comment from blacklisted subreddit: {}".\
+                          format(comment.subreddit))
+
+            comment.body = ''.join(ch.lower() for ch in comment.body\
                                    if ch not in exclude)
             GREEN_LIGHT = True  # used to prevent duplicate commenting
             for phrase, pattern in phrases.items():
