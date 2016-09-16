@@ -30,10 +30,19 @@ SLEEP_TIME = {
 
 SUBREDDITS_CONF = 'subreddits.conf'
 OKREDDIT_CONF = 'okreddit.conf'
-SUBREDDITS = []
+SUBREDDITS = {
+    'allowed': [],
+    'disallowed': [],
+}
+
 with open(SUBREDDITS_CONF, 'r') as f:
     for subreddit in f.read().splitlines():
-        SUBREDDITS.append(str(subreddit))
+        subreddit = str(subreddit).strip()
+        if subreddit[0] != "-":
+            SUBREDDITS['allowed'].append(subreddit)
+        else:
+            SUBREDDITS['disallowed'].append(subreddit)
+
 POINT_THRESHOLD = 0
 USER_AGENT = "OkReddit by /u/cdrootrmdashrfstar"
 
@@ -91,9 +100,18 @@ def scan_comments(session, phrases):
     comments = {}
     reply_count = 0
 
-    for subreddit in SUBREDDITS:
+    for subreddit in SUBREDDITS['allowed']:
         kargs['subreddit'] = subreddit
-        comments[subreddit] = praw.helpers.comment_stream(**kargs)
+        print("running...")
+        comment_stream = praw.helpers.comment_stream(**kargs)
+        #comments[subreddit] = [c for c in comment_stream
+        #                       if c.subreddit not in SUBREDDITS['disallowed']]
+        print(comment_stream)
+        sys.exit()
+        print("doning...")
+
+    import pprint
+    pprint.pprint(comments)
 
     for subreddit in SUBREDDITS:
         for comment in comments[subreddit]:
