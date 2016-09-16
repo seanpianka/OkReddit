@@ -8,16 +8,17 @@ import re
 OKREDDIT_CONF = 'okreddit.conf'
 PHRASES_CONF = 'phrases.conf'
 SUBREDDITS_CONF = 'subreddits.conf'
-SUBREDDITS = {
-    'allowed': [],
-    'disallowed': [],
-}
 config = configparser.ConfigParser()
 config.read(OKREDDIT_CONF)
 
 """
     subreddits
 """
+SUBREDDITS = {
+    'allowed': [],
+    'disallowed': [],
+}
+
 with open(SUBREDDITS_CONF, 'r') as f:
     for subreddit in list(map(str.strip, f.read().splitlines())):
         if '#' not in subreddit and subreddit:
@@ -66,6 +67,7 @@ SLEEP_TIME = {
     "delete": 1000,
 }
 MAX_REPLIES_PER_CYCLE = 1000
+MAX_THREAD_COUNT = 15
 PREDEFINED_COMMENT = "Found \"{}\", so here's your definition(s):\n\n" \
                      "{}\n\nThanks for using [OkReddit]" \
                      "(https://github.com/seanpianka/OkReddit)!\n\n" \

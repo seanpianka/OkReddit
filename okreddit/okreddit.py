@@ -9,25 +9,28 @@ okreddit
 :twitter: seanpianka
 
 """
-import lxml
 import random
-import requests
 import string
 import sys
 import threading
 import time
+
+import lxml
+import requests
+import praw
 from lxml import html
 
-import praw
-
 import constants
+import multithreading
 from constants import (DEFINE_API, SLEEP_TIME, SUBREDDITS, POINT_THRESHOLD,
                        USER_AGENT, PREDEFINED_COMMENT, PHRASE_PATTERNS,
                        USERNAME, PASSWORD, MAX_DEFINITIONS, VERBOSITY_LEVEL,
-                       MAX_REPLIES_PER_CYCLE, DISABLE_PRAW_WARNING)
+                       MAX_REPLIES_PER_CYCLE, DISABLE_PRAW_WARNING,
+                       MAX_THREAD_COUNT)
 from helpers import print_log
 
 print_log(SUBREDDITS)
+
 
 def run(phrases):
     """
@@ -56,33 +59,22 @@ def run(phrases):
     print_log("Bot exiting...")
 
 
+reply_count = 0
+
+
 def scan_comments(session, phrases):
     """
 
     """
-    print_log("Fetching new comments...")
+    pool = multithreading.ThreadPool(len(SUBREDDITS['allowed']))
+    lock = multithreading.Lock()
 
-    exclude = set(string.punctuation)
+    def watch_subreddit(subreddit, comment_generator):
+        global reply_count
 
-    kargs = {
-        "reddit_session": session,
-        "subreddit": '',
-        "limit": None,
-        "verbosity": VERBOSITY_LEVEL,
-    }
-    comments = {}
-    reply_count = 0
+        print_log("Beginning to scan {}...".format(subreddit))
 
-    for subreddit in SUBREDDITS['allowed']:
-        kargs['subreddit'] = subreddit
-        # comment_stream is a generator
-        comment_generator = praw.helpers.comment_stream(**kargs)
-        comments[subreddit] = comment_generator
-
-    for subreddit in SUBREDDITS['allowed']:
-        print_log("NEXT SUBREDDIT")
-        for comment in comments[subreddit]:
-            print_log("ANOTHER COMMENT.")
+        for comment in comment_generator:
             comment.body = ''.join(ch for ch in comment.body\
                                    if ch not in exclude)
             GREEN_LIGHT = True  # used to prevent duplicate commenting
@@ -107,16 +99,40 @@ def scan_comments(session, phrases):
                             print_log("Unable to match comment pattern.",
                                   "Attmepting to match other patterns...")
                         else:
-                            print("Found new comment, id: {}, replying...".\
-                                  format(comment.id))
+                            print_log("Found new comment, id: {}, replying...".\
+                                      format(comment.id))
                             definition = define_word(word)
                             post_definition_reply(comment, word, definition)
                             reply_count += 1
                             print_log("Moving to next comment...")
                             break
-            if reply_count == MAX_REPLIES_PER_CYCLE:
-                print_log("Returning...")
-                return
+            with lock:
+                if reply_count == MAX_REPLIES_PER_CYCLE:
+                    print_log("Ending comment scan cycle...")
+                    return
+
+    exclude = set(string.punctuation)
+
+    kargs = {
+        "reddit_session": session,
+        "subreddit": '',
+        "limit": None,
+        "verbosity": VERBOSITY_LEVEL,
+    }
+
+    for subreddit in SUBREDDITS['allowed']:
+        kargs['subreddit'] = subreddit
+        # comment_stream is a generator
+        comment_generator = praw.helpers.comment_stream(**kargs)
+
+        pool.add_task(
+            watch_subreddit,
+            subreddit,
+            comment_generator,
+        )
+
+    print_log("Fetching new comments...")
+    pool.wait_completion()
 
 
 def post_definition_reply(reply_to, word, definition):
@@ -124,7 +140,6 @@ def post_definition_reply(reply_to, word, definition):
 
     """
     try:
-        global PREDEFINED_COMMENT
         reply_to.reply(PREDEFINED_COMMENT.format(word, definition))
         print_log("Posting reply...")
     except Exception as e:
