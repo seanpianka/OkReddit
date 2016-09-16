@@ -10,15 +10,25 @@ okreddit
 
 """
 import configparser
+import datetime
 import lxml
 import praw
 import random
 import re
 import requests
+import string
 import sys
 import threading
 import time
 from lxml import html
+
+
+def print_log(msg, *args, **kwargs):
+    now = datetime.datetime.now()
+    time_format = (now.year, now.month, now.day,
+                   now.hour, now.minute, now.second)
+    print("[{:02}-{:02}-{:02} {:02}:{:02}:{:02}]: {}".\
+          format(*time_format, msg), *args, **kwargs)
 
 
 DEFINE_API = 'http://google-dictionary.so8848.com/meaning?word={}'
@@ -28,8 +38,9 @@ SLEEP_TIME = {
     "delete": 1000,
 }
 
-SUBREDDITS_CONF = 'subreddits.conf'
 OKREDDIT_CONF = 'okreddit.conf'
+
+SUBREDDITS_CONF = 'subreddits.conf'
 SUBREDDITS = {
     'allowed': [],
     'disallowed': [],
@@ -42,6 +53,8 @@ with open(SUBREDDITS_CONF, 'r') as f:
             SUBREDDITS['allowed'].append(subreddit)
         else:
             SUBREDDITS['disallowed'].append(subreddit)
+
+print_log(SUBREDDITS)
 
 POINT_THRESHOLD = 0
 USER_AGENT = "OkReddit by /u/cdrootrmdashrfstar"
@@ -91,6 +104,8 @@ def run(phrases):
 def scan_comments(session, phrases):
     print("Fetching new comments...")
 
+    exclude = set(string.punctuation)
+
     kargs = {
         "reddit_session": session,
         "subreddit": '',
@@ -102,19 +117,13 @@ def scan_comments(session, phrases):
 
     for subreddit in SUBREDDITS['allowed']:
         kargs['subreddit'] = subreddit
-        print("running...")
+        # comment_stream is a generator
         comment_stream = praw.helpers.comment_stream(**kargs)
-        #comments[subreddit] = [c for c in comment_stream
-        #                       if c.subreddit not in SUBREDDITS['disallowed']]
-        print(comment_stream)
-        sys.exit()
-        print("doning...")
+        comments[subreddit] = comment_stream
 
-    import pprint
-    pprint.pprint(comments)
-
-    for subreddit in SUBREDDITS:
+    for subreddit in SUBREDDITS['allowed']:
         for comment in comments[subreddit]:
+            comment.body = ''.join(ch for ch in comment.body if ch not in exclude)
             GREEN_LIGHT = True  # used to prevent duplicate commenting
             for phrase, pattern in phrases.items():
                 print("Searching for phrases in {}'s comment, id: {}...".\
@@ -144,8 +153,8 @@ def scan_comments(session, phrases):
                             print("Moving to next comment...")
                             break
 
-
             if reply_count == 1000:
+                print("Returning...")
                 return
 
 
@@ -183,7 +192,7 @@ def define_word(word):
               "Do not run until a new API is provided.")
         sys.exit()
 
-    tree = html.fromstring(res)
+    tree = html.fromstring(res.text)
 
     data = {}
     # credit to @mmcdan for this xpath to find <b> OR <li> w/ class="std"
