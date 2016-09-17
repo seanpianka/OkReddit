@@ -14,6 +14,7 @@ import string
 import sys
 import threading
 import time
+import webbrowser
 
 import lxml
 import requests
@@ -24,10 +25,11 @@ import constants
 import multithreading
 from constants import (DEFINE_API, SLEEP_TIME, SUBREDDITS, POINT_THRESHOLD,
                        USER_AGENT, PREDEFINED_COMMENT, PHRASE_PATTERNS,
-                       USERNAME, PASSWORD, MAX_DEFINITIONS, VERBOSITY_LEVEL,
-                       MAX_REPLIES_PER_CYCLE, DISABLE_PRAW_WARNING,
-                       MAX_THREAD_COUNT)
-from helpers import print_log
+                       MAX_DEFINITIONS, VERBOSITY_LEVEL, MAX_REPLIES_PER_CYCLE,
+                       DISABLE_PRAW_WARNING, MAX_THREAD_COUNT, CLIENT_ID,
+                       CLIENT_SECRET)
+from helpers import print_log, lcstrcmp
+
 
 print_log(SUBREDDITS)
 
@@ -40,58 +42,76 @@ def run(phrases):
     print_log("Bot initializing...")
     r = praw.Reddit(USER_AGENT)
     try:
-        r.login(USERNAME, PASSWORD, disable_warning=DISABLE_PRAW_WARNING)
+        r.set_oauth_app_info(client_id=CLIENT_ID,
+                             client_secret=CLIENT_SECRET,
+                             redirect_uri='http://127.0.0.1:65010/authorize')
+        url = r.get_authorize_url('OkRedditDefine',
+                                  "read edit history identity submit",
+                                  True)
+        webbrowser.open(url)
+        access_token = input('Access-token: ').strip()
+        access_info = r.get_access_information(access_token)
+        USERNAME = r.get_me().name
     except Exception as e:
         print_log("Error while logging in: {}".format(e))
         sys.exit()
     print_log("Logged in as {}.".format(USERNAME))
 
     # Old comment scanner-deleter to delete <1 point comments every half hour
-    t = threading.Thread(target=delete_downvoted_posts, args=(r, ))
-    t.start()
+    #t = threading.Thread(target=delete_downvoted_posts, args=(r, USERNAME, ))
+    #t.start()
 
-    while True:
-        print_log("Initializing scanner...")
-        scan_comments(r, phrases)
-        print_log("Waiting {} seconds...".format(SLEEP_TIME['scan']))
-        time.sleep(SLEEP_TIME['scan'])
+    print_log("Initializing scanner...")
+    scan_comments(r, phrases, USERNAME)
 
     print_log("Bot exiting...")
 
 
-reply_count = 0
-
-
-def scan_comments(session, phrases):
+def scan_comments(session, phrases, USERNAME):
     """
 
     """
-    pool = multithreading.ThreadPool(len(SUBREDDITS['allowed']))
-    lock = multithreading.Lock()
+    exclude = set(string.punctuation)
 
-    def watch_subreddit(subreddit, comment_generator):
-        global reply_count
+    kargs = {
+        "reddit_session": session,
+        "subreddit": '',
+        "limit": None,
+        "verbosity": VERBOSITY_LEVEL,
+    }
 
+    reply_count = 0
+    comments = {}
+
+    for subreddit in SUBREDDITS['allowed']:
+        print_log("Fetching new comments...")
+        kargs['subreddit'] = subreddit
+        comments[subreddit] = praw.helpers.comment_stream(**kargs)
+
+    for subreddit in SUBREDDITS['allowed']:
+        comment_generator = comments[subreddit]
         print_log("Beginning to scan {}...".format(subreddit))
 
         for comment in comment_generator:
+            print_log("Searching for phrases in {}'s comment, id: {}...".\
+                  format(comment.author, comment.id))
+
             if str(comment.subreddit).lower() in SUBREDDITS['disallowed']:
                 print_log("Ignoring comment from blacklisted subreddit: {}".\
                           format(comment.subreddit))
+                continue
 
+            GREEN_LIGHT = True  # used to prevent duplicate commenting
             comment.body = ''.join(ch.lower() for ch in comment.body\
                                    if ch not in exclude)
-            GREEN_LIGHT = True  # used to prevent duplicate commenting
-            for phrase, pattern in phrases.items():
-                print_log("Searching for phrases in {}'s comment, id: {}...".\
-                      format(comment.author, comment.id))
 
+            for phrase, pattern in phrases.items():
                 if phrase in comment.body:
                     print_log("Fetching comment replies...")
                     comment.refresh()
-                    if str(comment.author.name).lower() == USERNAME.lower() or\
+                    if lcstrcmp(comment.author.name, USERNAME) or \
                     [x for x in comment.replies\
-                     if x.author.name.lower() == USERNAME.lower()]:
+                     if lcstrcmp(x.author.name, USERNAME)]:
                         print_log("Ignoring comment, already replied.")
                         GREEN_LIGHT = False
 
@@ -110,47 +130,28 @@ def scan_comments(session, phrases):
                             reply_count += 1
                             print_log("Moving to next comment...")
                             break
-            with lock:
-                if reply_count == MAX_REPLIES_PER_CYCLE:
-                    print_log("Ending comment scan cycle...")
-                    return
+            if reply_count == MAX_REPLIES_PER_CYCLE:
+                print_log("Ending comment scan cycle...")
+                print_log("Waiting {} seconds...".\
+                          format(SLEEP_TIME['scan']))
+                time.sleep(SLEEP_TIME['scan'])
+        print_log("Returning...")
 
-    exclude = set(string.punctuation)
-
-    kargs = {
-        "reddit_session": session,
-        "subreddit": '',
-        "limit": None,
-        "verbosity": VERBOSITY_LEVEL,
-    }
-
-    for subreddit in SUBREDDITS['allowed']:
-        kargs['subreddit'] = subreddit
-        # comment_stream is a generator
-        comment_generator = praw.helpers.comment_stream(**kargs)
-
-        pool.add_task(
-            watch_subreddit,
-            subreddit,
-            comment_generator,
-        )
-
-    print_log("Fetching new comments...")
-    pool.wait_completion()
 
 
 def post_definition_reply(reply_to, word, definition):
     """
 
     """
+    print_log("Posting reply...")
     try:
         reply_to.reply(PREDEFINED_COMMENT.format(word, definition))
-        print_log("Posting reply...")
+        print_log("Reply posted!")
     except Exception as e:
-        print_log("Received error: {}".format(e))
+        print_log("Received error while posting: {}".format(e))
 
 
-def delete_downvoted_posts(session):
+def delete_downvoted_posts(session, USERNAME):
     """
 
     """

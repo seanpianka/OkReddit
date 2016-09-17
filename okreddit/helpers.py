@@ -8,3 +8,6 @@ def print_log(msg, *args, **kwargs):
                        now.hour, now.minute, now.second)
         print("[{:02}-{:02}-{:02} {:02}:{:02}:{:02}]: {}".\
               format(*time_format, msg), *args, **kwargs)
+
+
+lcstrcmp = lambda str1, str2: str1.lower() == str2.lower()

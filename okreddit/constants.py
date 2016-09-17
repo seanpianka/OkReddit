@@ -50,8 +50,10 @@ for phrase in PHRASES_TO_LOOK_FOR:
 """
     reddit praw api variables
 """
-USERNAME = str(config.get('Authentication', 'username'))
-PASSWORD = str(config.get('Authentication', 'password'))
+#USERNAME = str(config.get('Authentication', 'username'))
+#PASSWORD = str(config.get('Authentication', 'password'))
+CLIENT_ID = str(config.get('Authentication', 'client_id'))
+CLIENT_SECRET = str(config.get('Authentication', 'client_secret'))
 USER_AGENT = "OkReddit by /u/cdrootrmdashrfstar"
 POINT_THRESHOLD = 0
 MAX_DEFINITIONS = 5
