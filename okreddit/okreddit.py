@@ -27,8 +27,8 @@ from constants import (DEFINE_API, SLEEP_TIME, SUBREDDITS, POINT_THRESHOLD,
                        USER_AGENT, PREDEFINED_COMMENT, PHRASE_PATTERNS,
                        MAX_DEFINITIONS, VERBOSITY_LEVEL, MAX_REPLIES_PER_CYCLE,
                        DISABLE_PRAW_WARNING, MAX_THREAD_COUNT, CLIENT_ID,
-                       CLIENT_SECRET)
-from helpers import print_log, lcstrcmp
+                       CLIENT_SECRET, COMMENT_API, PULL_COUNT)
+from helpers import print_log, lcstrcmp, RedditComment
 
 
 print_log(SUBREDDITS)
@@ -38,7 +38,6 @@ def run(phrases):
     """
 
     """
-    print_log("*** {} ***".format(USER_AGENT))
     print_log("Bot initializing...")
     r = praw.Reddit(USER_AGENT)
     try:
@@ -52,17 +51,28 @@ def run(phrases):
         access_token = input('Access-token: ').strip()
         access_info = r.get_access_information(access_token)
         USERNAME = r.get_me().name
+        # for testing
+        USERNAME = "OkDefine"
     except Exception as e:
         print_log("Error while logging in: {}".format(e))
         sys.exit()
-    print_log("Logged in as {}.".format(USERNAME))
+    else:
+        print_log("Logged in as {}.".format(USERNAME))
 
     # Old comment scanner-deleter to delete <1 point comments every half hour
     #t = threading.Thread(target=delete_downvoted_posts, args=(r, USERNAME, ))
     #t.start()
 
     print_log("Initializing scanner...")
-    scan_comments(r, phrases, USERNAME)
+
+    while True:
+        new_comments = scan_comments(r, phrases, USERNAME)
+        reply_to_comments(new_comments)
+
+        print_log("Ending comment scan cycle...")
+        print_log("Waiting {} seconds...".\
+                  format(SLEEP_TIME['scan']))
+        time.sleep(SLEEP_TIME['scan'])
 
     print_log("Bot exiting...")
 
@@ -71,72 +81,80 @@ def scan_comments(session, phrases, USERNAME):
     """
 
     """
-    exclude = set(string.punctuation)
 
-    kargs = {
-        "reddit_session": session,
-        "subreddit": '',
-        "limit": None,
-        "verbosity": VERBOSITY_LEVEL,
-    }
+    def already_replied_to(comment):
+        """
 
-    reply_count = 0
-    comments = {}
+        """
+        return lcstrcmp(comment['author'], USERNAME) or \
+        bool([x for x in comment['object'].replies\
+             if lcstrcmp(x.author.name, USERNAME)])
 
-    for subreddit in SUBREDDITS['allowed']:
-        print_log("Fetching new comments...")
-        kargs['subreddit'] = subreddit
-        comments[subreddit] = praw.helpers.comment_stream(**kargs)
+    def validate_comments(comment_list):
+        """
 
-    for subreddit in SUBREDDITS['allowed']:
-        comment_generator = comments[subreddit]
-        print_log("Beginning to scan {}...".format(subreddit))
+        """
+        for comment in comment_list:
+            comment.update({
+                'msg_phrase': phrase
+            })
+            comment.update({
+                'object': session.get_info(thing_id="t1_" + comment['id'])
+            })
+        return [c for c in comment_list if not already_replied_to(c)]
 
-        for comment in comment_generator:
-            print_log("Searching for phrases in {}'s comment, id: {}...".\
-                  format(comment.author, comment.id))
+    raw_comments = []
+    to_be_added_comments = []
+    new_comments = {k: list() for k in SUBREDDITS['allowed'] if k != 'all'}
 
-            if str(comment.subreddit).lower() in SUBREDDITS['disallowed']:
-                print_log("Ignoring comment from blacklisted subreddit: {}".\
-                          format(comment.subreddit))
-                continue
+    checking_specific_subreddits = SUBREDDITS['allowed'][0] != 'all'
 
-            GREEN_LIGHT = True  # used to prevent duplicate commenting
-            comment.body = ''.join(ch.lower() for ch in comment.body\
-                                   if ch not in exclude)
+    if checking_specific_subreddits:
+        for subreddit in SUBREDDITS['allowed']:
+            print_log("Beginning to scan {}...".format(subreddit))
+            for phrase in phrases.keys():
+                raw_comments = pull_n_comments(phrase, PULL_COUNT, subreddit)
+                to_be_added_comments += validate_comments(raw_comments)
 
-            for phrase, pattern in phrases.items():
-                if phrase in comment.body:
-                    print_log("Fetching comment replies...")
-                    comment.refresh()
-                    if lcstrcmp(comment.author.name, USERNAME) or \
-                    [x for x in comment.replies\
-                     if lcstrcmp(x.author.name, USERNAME)]:
-                        print_log("Ignoring comment, already replied.")
-                        GREEN_LIGHT = False
+    else:
+        print_log("Scanning all non-blacklisted subreddits...")
+        for phrase in phrases.keys():
+            raw_comments = pull_n_comments(phrase, PULL_COUNT, '')
+            to_be_added_comments += validate_comments(raw_comments)
 
-                    if GREEN_LIGHT:
-                        try:
-                            word = pattern.findall(comment.body)[0]
-                        except:
-                            print_log("Pattern: {}".format(pattern))
-                            print_log("Unable to match comment pattern.",
-                                  "Attmepting to match other patterns...")
-                        else:
-                            print_log("Found new comment, id: {}, replying...".\
-                                      format(comment.id))
-                            definition = define_word(word)
-                            post_definition_reply(comment, word, definition)
-                            reply_count += 1
-                            print_log("Moving to next comment...")
-                            break
-            if reply_count == MAX_REPLIES_PER_CYCLE:
-                print_log("Ending comment scan cycle...")
-                print_log("Waiting {} seconds...".\
-                          format(SLEEP_TIME['scan']))
-                time.sleep(SLEEP_TIME['scan'])
-        print_log("Returning...")
+    for comment_dict in to_be_added_comments:
+        c = RedditComment(session, comment_dict)
+        if c.subreddit not in new_comments:
+            new_comments[c.subreddit] = []
+        new_comments[c.subreddit].append(c)
 
+    return new_comments
+
+
+def pull_n_comments(phrase, count, subreddit=''):
+    """ returns a list of dicts of comments """
+    # this works because the API accepts a blank value for the subreddit
+    # parameter, while still returning all subreddits (the intended behavior)
+    res = requests.get(COMMENT_API.format(phrase, count, subreddit))
+    # list of dicts of comments
+    comment_json = res.json()['data']
+
+    # if searching through "all", make sure that disallowed subreddits
+    # are not added to the list of comments
+    if not subreddit:
+        comment_json = [c for c in comment_json\
+                        if c['subreddit'] not in SUBREDDITS['disallowed']]
+    return comment_json
+
+
+"""
+    if reply_count == MAX_REPLIES_PER_CYCLE:
+"""
+
+
+def reply_to_comments(comment_list):
+    for comment in comment_list:
+        pass
 
 
 def post_definition_reply(reply_to, word, definition):

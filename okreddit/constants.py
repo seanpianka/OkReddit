@@ -1,40 +1,59 @@
+"""
+constants
+~~~~~~~~~
+
+"""
 import configparser
 import re
 
 
-"""
-    configuration files
-"""
+#=============================================================================#
+#    CONFIGURATION FILES                                                      #
+#=============================================================================#
 OKREDDIT_CONF = 'okreddit.conf'
 PHRASES_CONF = 'phrases.conf'
 SUBREDDITS_CONF = 'subreddits.conf'
 config = configparser.ConfigParser()
 config.read(OKREDDIT_CONF)
 
-"""
-    subreddits
-"""
+#=============================================================================#
+#   SUBREDDITS                                                                #
+#=============================================================================#
 SUBREDDITS = {
     'allowed': [],
     'disallowed': [],
 }
 
 with open(SUBREDDITS_CONF, 'r') as f:
-    for subreddit in list(map(str.strip, f.read().splitlines())):
+    found_all = False
+
+    for subr in list(map(lambda x: x.strip().lower(), f.read().splitlines())):
+        subreddit = subr  # PEP8 gimmick
         if '#' not in subreddit and subreddit:
-            if subreddit[0] != "-":
+            if subreddit[0] != "-" and not found_all:
+                if subreddit == 'all':
+                    # if all is selected, don't add any other allowed subs
+                    SUBREDDITS['allowed'] = ['all']
+                    found_all = True
+                    continue
                 SUBREDDITS['allowed'].append(subreddit.lower())
-            else:
+            elif subreddit[0] == '-':
                 SUBREDDITS['disallowed'].append(subreddit.lower())
 
-"""
-    dictionary api
-"""
+#=============================================================================#
+#   DICTIONARY API                                                            #
+#=============================================================================#
 DEFINE_API = 'http://google-dictionary.so8848.com/meaning?word={}'
 
-"""
-    comment phrases to match
-"""
+#=============================================================================#
+#   REDDIT COMMENTS API                                                       #
+#=============================================================================#
+COMMENT_API = 'https://api.pushshift.io/reddit/search?'\
+              'q="{}"&limit={}&subreddit={}'
+
+#=============================================================================#
+#   COMMENT PHRASES TO MATCH                                                  #
+#=============================================================================#
 BASE_PATTERN = r"\b{}.(\w+)"
 
 PHRASES_TO_LOOK_FOR = []
@@ -47,11 +66,9 @@ PHRASE_PATTERNS = {}
 for phrase in PHRASES_TO_LOOK_FOR:
     PHRASE_PATTERNS[phrase] = re.compile(BASE_PATTERN.format(phrase))
 
-"""
-    reddit praw api variables
-"""
-#USERNAME = str(config.get('Authentication', 'username'))
-#PASSWORD = str(config.get('Authentication', 'password'))
+#=============================================================================#
+#   REDDIT PRAW API VARIABLES                                                 #
+#=============================================================================#
 CLIENT_ID = str(config.get('Authentication', 'client_id'))
 CLIENT_SECRET = str(config.get('Authentication', 'client_secret'))
 USER_AGENT = "OkReddit by /u/cdrootrmdashrfstar"
@@ -60,9 +77,9 @@ MAX_DEFINITIONS = 5
 VERBOSITY_LEVEL = 0
 DISABLE_PRAW_WARNING = True
 
-"""
-    bot configuration variables
-"""
+#=============================================================================#
+#   BOT CONFIGURATION VARIABLES                                               #
+#=============================================================================#
 SHOW_LOGS = bool(config.get('Configuration', 'show-log'))
 SLEEP_TIME = {
     "scan": 15,
@@ -70,6 +87,7 @@ SLEEP_TIME = {
 }
 MAX_REPLIES_PER_CYCLE = 1000
 MAX_THREAD_COUNT = 15
+PULL_COUNT = 100
 PREDEFINED_COMMENT = "Found \"{}\", so here's your definition(s):\n\n" \
                      "{}\n\nThanks for using [OkReddit]" \
                      "(https://github.com/seanpianka/OkReddit)!\n\n" \
