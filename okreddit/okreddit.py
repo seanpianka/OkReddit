@@ -9,30 +9,30 @@ okreddit
 :twitter: seanpianka
 
 """
-import random
 import string
 import sys
 import threading
 import time
 import webbrowser
 
-import lxml
 import requests
 import praw
-from lxml import html
 
 import constants
 import multithreading
-from constants import (DEFINE_API, SLEEP_TIME, SUBREDDITS, POINT_THRESHOLD,
+from constants import (SLEEP_TIME, SUBREDDITS, POINT_THRESHOLD, COMMENT_API,
                        USER_AGENT, PREDEFINED_COMMENT, PHRASE_PATTERNS,
-                       MAX_DEFINITIONS, VERBOSITY_LEVEL, MAX_REPLIES_PER_CYCLE,
-                       DISABLE_PRAW_WARNING, MAX_THREAD_COUNT, CLIENT_ID,
-                       CLIENT_SECRET, COMMENT_API, PULL_COUNT)
+                       VERBOSITY_LEVEL, MAX_REPLIES_PER_CYCLE, PULL_COUNT,
+                       DISABLE_PRAW_WARNING, MAX_THREAD_COUNT,
+                       CLIENT_ID, CLIENT_SECRET)
 from helpers import print_log, lcstrcmp, RedditComment
 
 
 def run(phrases):
-    """
+    """ Manages the login sequence using OAuth1 via the Reddit PRAW api
+    package. Defines the USERNAME of the bot for use later during checks.
+    Initializes the scanner, retrieves a list of curated comments, and
+    initializes reply sequence for those comments. Repeats until interrupt.
 
     """
     print_log("Bot initializing...")
@@ -131,10 +131,14 @@ def scan_comments(session, phrases, USERNAME):
 
     print_log("Done.")
 
-    print_log("Filtering comments from blacklisted subreddits...")
-
     for comment_dict in to_be_added_comments:
         c = RedditComment(session, comment_dict)
+
+        # if there is no definition available, don't reply to comment
+        if not c.definition:
+            continue
+
+        # if the subreddit doesn't have kv pair in new_comments dict
         if c.subreddit not in new_comments:
             new_comments[c.subreddit] = []
         new_comments[c.subreddit].append(c)
@@ -178,9 +182,18 @@ def pull_n_comments(phrase, count, subreddit=''):
 
 
 def reply_to_comments(comment_list):
-    print_log("Reply to {} comments...".format(len(comment_list)))
-    for comment in comment_list:
-        pass
+    print_log("Beginning reply sequence...")
+    for subreddit, comments in comment_list.items():
+        print_log("Replying to comments from {}...".format(subreddit))
+        for comment in comments:
+            print_log("Replying to comment ID: {}".format(comment.id))
+            if not comment.definition:
+                continue
+            post_definition_reply(comment.obj,
+                                  comment.word,
+                                  comment.definition)
+            print_log("Replied.")
+
 
 
 def post_definition_reply(reply_to, word, definition):
@@ -190,7 +203,6 @@ def post_definition_reply(reply_to, word, definition):
     print_log("Posting reply...")
     try:
         reply_to.reply(PREDEFINED_COMMENT.format(word, definition))
-        print_log("Reply posted!")
     except Exception as e:
         print_log("Received error while posting: {}".format(e))
 
@@ -214,47 +226,6 @@ def delete_downvoted_posts(session, USERNAME):
 
         print_log(waitstr.format(SLEEP_TIME['delete']))
         time.sleep(SLEEP_TIME['delete'])
-
-
-def define_word(word):
-    """
-
-    """
-    res = requests.get(DEFINE_API.format(word))
-    if res.status_code == 404:
-        print_log("The definition API is now invalid.",
-                  "Do not run until a new API is provided.")
-        sys.exit()
-
-    tree = html.fromstring(res.text)
-    word_forms_defns = {}
-    # credit to @mmcdan for this xpath to find <b> OR <li> w/ class="std"
-    # makes perfect use of xpath's `|` (union) operator
-    defns_xpath = '//div[@id="forEmbed"]/b|//*[@class="std"]/ol/div/li'
-    for element in tree.xpath(defns_xpath):
-        if element.tag == 'b':
-            last_category = element.text.strip()
-            if last_category not in word_forms_defns:
-                word_forms_defns[last_category] = []
-        elif element.tag == 'li':
-            if last_category:
-                word_forms_defns[last_category].append(element.text.strip())
-            else:
-                print_log('Warning: li before b... this shouldn\'t happen.')
-
-    definition = ''
-
-    for form, defns in word_forms_defns.items():
-        word_meaning = "As a **{}**, {} can mean:\n\n".format(form, word)
-        definition += word_meaning
-        random.shuffle(defns)
-        for i, defn in enumerate(defns):
-            if i == MAX_DEFINITIONS:
-                break
-            definition += "\n{}: {}\n".format(i + 1, defn)
-        definition += "\n"
-
-    return definition
 
 
 if __name__ == '__main__':
