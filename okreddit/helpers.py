@@ -5,15 +5,13 @@ from constants import SHOW_LOGS, PHRASE_PATTERNS
 
 class RedditComment(object):
     def __init__(self, session, comment_dict):
-        exclude = set(string.punctuation)
-
         self.id = "t1_{}".format(comment_dict['id'])
-        self.body = ''.join(ch.lower() for ch in comment_dict['body']\
-                    if ch not in exclude)
+        self.body = comment_dict['body']
         self.author = comment_dict['author']
         self.subreddit = comment_dict['subreddit'].lower()
         self.thread_id = comment_dict['link_id']
         self.phrase = comment_dict['msg_phrase']
+        self.permalink = comment_dict['link_permalink']
         self.obj = comment_dict['object']
 
         try:
@@ -22,6 +20,9 @@ class RedditComment(object):
         except IndexError:
             self.word = None
             print_log("Failed to find any word in the comment.")
+
+    def __repr__(self):
+        return 'https://reddit.com{}'.format(self.permalink)
 
 
 def print_log(msg, *args, **kwargs):

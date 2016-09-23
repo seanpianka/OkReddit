@@ -31,9 +31,6 @@ from constants import (DEFINE_API, SLEEP_TIME, SUBREDDITS, POINT_THRESHOLD,
 from helpers import print_log, lcstrcmp, RedditComment
 
 
-print_log(SUBREDDITS)
-
-
 def run(phrases):
     """
 
@@ -63,7 +60,7 @@ def run(phrases):
     #t = threading.Thread(target=delete_downvoted_posts, args=(r, USERNAME, ))
     #t.start()
 
-    print_log("Initializing scanner...")
+    print_log("Initializing bot's scanner...")
 
     while True:
         new_comments = scan_comments(r, phrases, USERNAME)
@@ -94,6 +91,7 @@ def scan_comments(session, phrases, USERNAME):
         """
 
         """
+        print_log("Validating {} comments...".format(len(comment_list)))
         for comment in comment_list:
             comment.update({
                 'msg_phrase': phrase
@@ -101,6 +99,8 @@ def scan_comments(session, phrases, USERNAME):
             comment.update({
                 'object': session.get_info(thing_id="t1_" + comment['id'])
             })
+        print_log("Done.")
+
         return [c for c in comment_list if not already_replied_to(c)]
 
     raw_comments = []
@@ -109,18 +109,29 @@ def scan_comments(session, phrases, USERNAME):
 
     checking_specific_subreddits = SUBREDDITS['allowed'][0] != 'all'
 
+    print_log("Beginning scan...")
+
     if checking_specific_subreddits:
+        print_log("Scanning {} subreddits from whitelist...".\
+                  format(len(SUBREDDITS['allowed'])))
         for subreddit in SUBREDDITS['allowed']:
-            print_log("Beginning to scan {}...".format(subreddit))
+            print_log("Scanning \"{}\"...".format(subreddit))
             for phrase in phrases.keys():
+                print_log("Querying for comments containing phrase: \"{}\"...".\
+                          format(phrase))
                 raw_comments = pull_n_comments(phrase, PULL_COUNT, subreddit)
                 to_be_added_comments += validate_comments(raw_comments)
 
     else:
         print_log("Scanning all non-blacklisted subreddits...")
         for phrase in phrases.keys():
+            print_log("Querying for phrase: \"{}\"...".format(phrase))
             raw_comments = pull_n_comments(phrase, PULL_COUNT, '')
             to_be_added_comments += validate_comments(raw_comments)
+
+    print_log("Done.")
+
+    print_log("Filtering comments from blacklisted subreddits...")
 
     for comment_dict in to_be_added_comments:
         c = RedditComment(session, comment_dict)
@@ -128,31 +139,46 @@ def scan_comments(session, phrases, USERNAME):
             new_comments[c.subreddit] = []
         new_comments[c.subreddit].append(c)
 
+    print_log("Done.")
+
     return new_comments
 
 
 def pull_n_comments(phrase, count, subreddit=''):
     """ returns a list of dicts of comments """
+    exclude = set(string.punctuation)
+
     # this works because the API accepts a blank value for the subreddit
     # parameter, while still returning all subreddits (the intended behavior)
+    print_log("Pulling list of matching comments...")
     res = requests.get(COMMENT_API.format(phrase, count, subreddit))
     # list of dicts of comments
     comment_json = res.json()['data']
+    print_log("Done.")
+
+    for comment_dict in comment_json:
+        comment_dict.update( {
+            'body': ''.join(ch.lower() for ch in comment_dict['body']\
+                            if ch not in exclude)
+        })
 
     # if searching through "all", make sure that disallowed subreddits
     # are not added to the list of comments
+    print_log("Removing comments from blacklisted subreddits...")
+
     if not subreddit:
         comment_json = [c for c in comment_json\
-                        if c['subreddit'] not in SUBREDDITS['disallowed']]
+                       if c['subreddit'] not in SUBREDDITS['disallowed']]
+
+    comment_json = [c for c in comment_json\
+                    if len(PHRASE_PATTERNS[phrase].findall(c['body'])) != 0]
+
+    print_log("Done.")
     return comment_json
 
 
-"""
-    if reply_count == MAX_REPLIES_PER_CYCLE:
-"""
-
-
 def reply_to_comments(comment_list):
+    print_log("Reply to {} comments...".format(len(comment_list)))
     for comment in comment_list:
         pass
 
