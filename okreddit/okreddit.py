@@ -48,7 +48,6 @@ def run(phrases):
         access_token = input('Access-token: ').strip()
         access_info = r.get_access_information(access_token)
         USERNAME = r.get_me().name
-        print(USERNAME)
     except Exception as e:
         print_log("Error while logging in: {}".format(e))
         sys.exit()
@@ -191,7 +190,6 @@ def reply_to_comments(comment_list):
             post_definition_reply(comment.obj,
                                   comment.word,
                                   comment.definition)
-            return
             print_log("Replied.")
 
 
