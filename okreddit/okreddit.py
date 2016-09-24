@@ -81,15 +81,28 @@ def scan_comments(session, phrases, USERNAME):
         """
 
         """
-        return lcstrcmp(comment['author'], USERNAME) or \
-        bool([x for x in comment['object'].replies\
-             if lcstrcmp(x.author.name, USERNAME)])
+        author_check = lcstrcmp(comment['author'], USERNAME)
+
+        # assume replied to avoid duplicates
+        reply_check = True
+        for reply in comment['object'].replies:
+            try:
+                if reply and lcstrcmp(reply.author.name, USERNAME):
+                    break
+            except AttributeError:
+                # account who replied has been deleted, no username
+                continue
+        else:
+            reply_check = False
+
+        return author_check or reply_check
 
     def validate_comments(comment_list):
         """
 
         """
         print_log("Validating {} comments...".format(len(comment_list)))
+
         for comment in comment_list:
             comment.update({
                 'msg_phrase': phrase
@@ -97,6 +110,13 @@ def scan_comments(session, phrases, USERNAME):
             comment.update({
                 'object': session.get_info(thing_id="t1_" + comment['id'])
             })
+            try:
+                comment['object'].refresh()
+            except IndexError:
+                # there are no replies to this comment
+                # that is the assumed meaning of this exception
+                pass
+
         print_log("Done.")
 
         return [c for c in comment_list if not already_replied_to(c)]
@@ -133,8 +153,7 @@ def scan_comments(session, phrases, USERNAME):
         c = RedditComment(session, comment_dict)
 
         # if there is no definition available, don't reply to comment
-        if not c.definition:
-            continue
+        if not c.definition: continue
 
         # if the subreddit doesn't have kv pair in new_comments dict
         if c.subreddit not in new_comments:
