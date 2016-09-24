@@ -89,7 +89,11 @@ MAX_REPLIES_PER_CYCLE = 1000
 MAX_THREAD_COUNT = 15
 PULL_COUNT = 100
 PREDEFINED_COMMENT = "Found \"{}\", so here's your definition(s):\n\n" \
-                     "{}\n\nThanks for using [OkReddit]" \
-                     "(https://github.com/seanpianka/OkReddit)!\n\n" \
-                     "[Contact the Creator]" \
-                     "(http://reddit.com/u/cdrootrmdashrfstar)."
+                     "{}\n\n---\n\n^^Thanks ^^for ^^using [^^OkReddit]" \
+                     "(https://github.com/seanpianka/OkReddit)^^!\n\n" \
+                     "^^^// [^^^About](https://www.reddit.com/r/okredditbot/" \
+                     "comments/546cm7/about_okredditbot_how_it_works_etc/) " \
+                     "^^^// [^^^Creator](http://reddit.com/u/" \
+                     "cdrootrmdashrfstar) ^^^//"
+
+ ^^^// [^^^About]() ^^^// [^^^Creator](http://reddit.com/u/cdrootrmdashrfstar) ^^^//

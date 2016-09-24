@@ -110,6 +110,9 @@ def scan_comments(session, phrases, USERNAME):
             comment.update({
                 'object': session.get_info(thing_id="t1_" + comment['id'])
             })
+            # TODO: check for comment being deleted
+
+            # pulling comment replies
             try:
                 comment['object'].refresh()
             except IndexError:
