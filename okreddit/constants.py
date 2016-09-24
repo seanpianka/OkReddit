@@ -95,5 +95,3 @@ PREDEFINED_COMMENT = "Found \"{}\", so here's your definition(s):\n\n" \
                      "comments/546cm7/about_okredditbot_how_it_works_etc/) " \
                      "^^^// [^^^Creator](http://reddit.com/u/" \
                      "cdrootrmdashrfstar) ^^^//"
-
- ^^^// [^^^About]() ^^^// [^^^Creator](http://reddit.com/u/cdrootrmdashrfstar) ^^^//
