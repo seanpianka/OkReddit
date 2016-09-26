@@ -14,17 +14,20 @@ import sys
 import threading
 import time
 import webbrowser
+from pprint import pprint
 
 import requests
+import requests.auth
 import praw
+from praw.models import comment_forest
 
 import constants
 import multithreading
 from constants import (SLEEP_TIME, SUBREDDITS, POINT_THRESHOLD, COMMENT_API,
                        USER_AGENT, PREDEFINED_COMMENT, PHRASE_PATTERNS,
                        VERBOSITY_LEVEL, MAX_REPLIES_PER_CYCLE, PULL_COUNT,
-                       DISABLE_PRAW_WARNING, MAX_THREAD_COUNT,
-                       CLIENT_ID, CLIENT_SECRET)
+                       DISABLE_PRAW_WARNING, MAX_THREAD_COUNT, REDDIT_API,
+                       T_USERNAME, T_PASSWORD, CLIENT_ID, CLIENT_SECRET)
 from helpers import print_log, lcstrcmp, RedditComment
 
 
@@ -36,22 +39,20 @@ def run(phrases):
 
     """
     print_log("Bot initializing...")
-    r = praw.Reddit(USER_AGENT)
     try:
-        r.set_oauth_app_info(client_id=CLIENT_ID,
-                             client_secret=CLIENT_SECRET,
-                             redirect_uri='http://127.0.0.1:65010/authorize')
-        url = r.get_authorize_url('OkRedditDefine',
-                                  "read edit history identity submit",
-                                  True)
-        webbrowser.open(url)
-        access_token = input('Access-token: ').strip()
-        access_info = r.get_access_information(access_token)
-        USERNAME = r.get_me().name
+        # PRAW4 script-based login method
+        r = praw.Reddit(
+            user_agent=USER_AGENT,
+            client_id=CLIENT_ID,
+            client_secret=CLIENT_SECRET,
+            username=T_USERNAME,
+            password=T_PASSWORD,
+        )
     except Exception as e:
         print_log("Error while logging in: {}".format(e))
         sys.exit()
     else:
+        USERNAME = r.user.me()
         print_log("Logged in as {}.".format(USERNAME))
 
     # Old comment scanner-deleter to delete <1 point comments every half hour
@@ -81,10 +82,11 @@ def scan_comments(session, phrases, USERNAME):
         """
 
         """
-        author_check = lcstrcmp(comment['author'], USERNAME)
+        author_check = lcstrcmp(comment['author'], USERNAME.name)
 
         # assume replied to avoid duplicates
         reply_check = True
+        print(comment)
         for reply in comment['object'].replies:
             try:
                 if reply and lcstrcmp(reply.author.name, USERNAME):
@@ -103,22 +105,21 @@ def scan_comments(session, phrases, USERNAME):
         """
         print_log("Validating {} comments...".format(len(comment_list)))
 
-        for comment in comment_list:
+        for i, comment in enumerate(comment_list):
+            print_log("Working...", end="\r")
+
             comment.update({
                 'msg_phrase': phrase
             })
-            comment.update({
-                'object': session.get_info(thing_id="t1_" + comment['id'])
-            })
-            # TODO: check for comment being deleted
 
-            # pulling comment replies
             try:
-                comment['object'].refresh()
+                comment.update({
+                    'object': session.comment(id=comment['id']).refresh()
+                })
             except IndexError:
-                # there are no replies to this comment
-                # that is the assumed meaning of this exception
-                pass
+                print_log("Found invalid comment, removing from list...")
+                del(comment_list[i])
+
 
         print_log("Done.")
 
@@ -189,15 +190,16 @@ def pull_n_comments(phrase, count, subreddit=''):
     # if searching through "all", make sure that disallowed subreddits
     # are not added to the list of comments
     print_log("Removing comments from blacklisted subreddits...")
-
     if not subreddit:
         comment_json = [c for c in comment_json\
                        if c['subreddit'] not in SUBREDDITS['disallowed']]
+    print_log("Done.")
 
+    print_log("Filtering comments that fail \'findall\' test.")
     comment_json = [c for c in comment_json\
                     if len(PHRASE_PATTERNS[phrase].findall(c['body'])) != 0]
-
     print_log("Done.")
+
     return comment_json
 
 

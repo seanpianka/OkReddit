@@ -1,0 +1,3 @@
+pip install --upgrade https://github.com/praw-dev/praw/archive/praw4.zip
+
+pip install --upgrade --pre praw

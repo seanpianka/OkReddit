@@ -71,6 +71,10 @@ for phrase in PHRASES_TO_LOOK_FOR:
 #=============================================================================#
 CLIENT_ID = str(config.get('Authentication', 'client_id'))
 CLIENT_SECRET = str(config.get('Authentication', 'client_secret'))
+T_USERNAME = str(config.get('Authentication', 'username'))
+T_PASSWORD = str(config.get('Authentication', 'password'))
+
+REDDIT_API = "https://www.reddit.com/api/v1/access_token"
 USER_AGENT = "OkReddit by /u/cdrootrmdashrfstar"
 POINT_THRESHOLD = 0
 MAX_DEFINITIONS = 5
