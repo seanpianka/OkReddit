@@ -91,11 +91,15 @@ def scan_comments(session, phrases, USERNAME):
         # assume true/replied to avoid duplicates
         reply_check = True
         for reply in comment['object'].replies:
-            if reply and lcstrcmp(reply.author.name, USERNAME.name):
-                # if the reply exists and one of the replies has an author
-                # that is the same as the bot, then break to keep reply_check
-                # set to True
-                break
+            try:
+                if reply and lcstrcmp(reply.author.name, USERNAME.name):
+                    # if the reply exists and one of the replies has an author
+                    # that is the same as the bot, then break to keep reply_check
+                    # set to True
+                    break
+            except AttributeError:
+                # the comment was deleted or in some invalid state
+                pass
         else:
             # if the break is never reached, that means the bot never replied
             # to this comment, therefore it won't cause a duplicate to reply
