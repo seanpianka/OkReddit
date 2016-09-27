@@ -56,6 +56,7 @@ def run(phrases):
         print_log("Logged in as {}.".format(USERNAME))
 
     # Old comment scanner-deleter to delete <1 point comments every half hour
+    # Disabled until thread safety can be ensured
     #t = threading.Thread(target=delete_downvoted_posts, args=(r, USERNAME, ))
     #t.start()
 
@@ -120,7 +121,7 @@ def scan_comments(session, phrases, USERNAME):
                 comment.update({
                     'object': session.comment(id=comment['id']).refresh()
                 })
-            except IndexError:
+            except:
                 print_log("Found invalid comment, removing from list...")
                 comment.update({
                     'object': None
@@ -247,8 +248,8 @@ def delete_downvoted_posts(session, USERNAME):
 
     while True:
         print_log("Deleting comments with a score equal to or below 0...")
-        my_account = session.get_redditor(USERNAME)
-        my_comments = my_account.get_comments(limit=25)
+        my_account = session.user.me()
+        my_comments = my_account.comments.new()
 
         for comment in my_comments:
             if comment.score <= POINT_THRESHOLD:
