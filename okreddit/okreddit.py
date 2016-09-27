@@ -79,22 +79,26 @@ def scan_comments(session, phrases, USERNAME):
     """
 
     def already_replied_to(comment):
-        """
+        """ return true if there exists a reply from USERNAME
 
         """
+        if comment['object'] is None: return False
+
+        # stores whether comment's author and bot name are the same
         author_check = lcstrcmp(comment['author'], USERNAME.name)
 
-        # assume replied to avoid duplicates
+        # assume true/replied to avoid duplicates
         reply_check = True
-        print(comment)
         for reply in comment['object'].replies:
-            try:
-                if reply and lcstrcmp(reply.author.name, USERNAME):
-                    break
-            except AttributeError:
-                # account who replied has been deleted, no username
-                continue
+            if reply and lcstrcmp(reply.author.name, USERNAME.name):
+                # if the reply exists and one of the replies has an author
+                # that is the same as the bot, then break to keep reply_check
+                # set to True
+                break
         else:
+            # if the break is never reached, that means the bot never replied
+            # to this comment, therefore it won't cause a duplicate to reply
+            # to this comment
             reply_check = False
 
         return author_check or reply_check
@@ -118,12 +122,15 @@ def scan_comments(session, phrases, USERNAME):
                 })
             except IndexError:
                 print_log("Found invalid comment, removing from list...")
-                del(comment_list[i])
+                comment.update({
+                    'object': None
+                })
 
 
         print_log("Done.")
 
-        return [c for c in comment_list if not already_replied_to(c)]
+        return [c for c in comment_list if not already_replied_to(c) and\
+                c['object'] is not None]
 
     raw_comments = []
     to_be_added_comments = []
@@ -141,14 +148,16 @@ def scan_comments(session, phrases, USERNAME):
             for phrase in phrases.keys():
                 print_log("Querying for comments containing phrase: \"{}\"...".\
                           format(phrase))
-                raw_comments = pull_n_comments(phrase, PULL_COUNT, subreddit)
+                raw_comments = pull_n_comments(phrase, PULL_COUNT,
+                                               USERNAME, subreddit)
                 to_be_added_comments += validate_comments(raw_comments)
 
     else:
         print_log("Scanning all non-blacklisted subreddits...")
         for phrase in phrases.keys():
             print_log("Querying for phrase: \"{}\"...".format(phrase))
-            raw_comments = pull_n_comments(phrase, PULL_COUNT, '')
+            raw_comments = pull_n_comments(phrase, PULL_COUNT,
+                                           USERNAME, '')
             to_be_added_comments += validate_comments(raw_comments)
 
     print_log("Done.")
@@ -169,7 +178,7 @@ def scan_comments(session, phrases, USERNAME):
     return new_comments
 
 
-def pull_n_comments(phrase, count, subreddit=''):
+def pull_n_comments(phrase, count, username, subreddit=''):
     """ returns a list of dicts of comments """
     exclude = set(string.punctuation)
 
